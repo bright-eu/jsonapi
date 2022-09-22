@@ -250,12 +250,12 @@ func CreateBlog(w http.ResponseWriter, r *http.Request) {
 #### `UnmarshalManyPayload`
 
 ```go
-UnmarshalManyPayload(in io.Reader, t reflect.Type) ([]interface{}, error)
+UnmarshalManyPayload[T](in io.Reader) ([]T, error)
 ```
 
 Visit [godoc](http://godoc.org/github.com/google/jsonapi#UnmarshalManyPayload)
 
-Takes an `io.Reader` and a `reflect.Type` representing the uniform type
+Takes an `io.Reader` and a `type T` representing the uniform type
 contained within the `"data"` JSON API member.
 
 ##### Handler Example Code
