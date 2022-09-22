@@ -99,6 +99,10 @@ func UnmarshalPayload(in io.Reader, model interface{}) error {
 		return err
 	}
 
+	return DecodeOnePayload(payload, model)
+}
+
+func DecodeOnePayload(payload *OnePayload, model interface{}) error {
 	if payload.Included != nil {
 		includedMap := make(map[string]*Node)
 		for _, included := range payload.Included {
@@ -120,6 +124,10 @@ func UnmarshalManyPayload(in io.Reader, t reflect.Type) ([]interface{}, error) {
 		return nil, err
 	}
 
+	return DecodeManyPayload(payload, t)
+}
+
+func DecodeManyPayload(payload *ManyPayload, t reflect.Type) ([]interface{}, error) {
 	models := []interface{}{}         // will be populated from the "data"
 	includedMap := map[string]*Node{} // will be populate from the "included"
 

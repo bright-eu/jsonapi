@@ -1,10 +1,15 @@
 package jsonapi
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // Payloader is used to encapsulate the One and Many payload types
 type Payloader interface {
 	clearIncluded()
+	filterIncluded(relationshipPaths []string)
 }
 
 // OnePayload is used to represent a generic JSON API payload where a single
@@ -20,6 +25,21 @@ func (p *OnePayload) clearIncluded() {
 	p.Included = []*Node{}
 }
 
+//TODO see or this can be done cleaner
+func (p *OnePayload) filterIncluded(relationshipPaths []string) {
+	if p == nil || p.Data == nil || len(p.Included) == 0 {
+		return
+	}
+	allIncludes := make(map[string]*Node, len(p.Included))
+	appendNodes(&allIncludes, p.Included...)
+	filteredIncludes := make(map[string]*Node, 0)
+	for _, path := range relationshipPaths {
+		includePath := strings.Split(path, ".")
+		oneAppendRelationsToIncludes(&filteredIncludes, p.Data, includePath, allIncludes)
+	}
+	p.Included = nodeMapValuesSorted(&filteredIncludes)
+}
+
 // ManyPayload is used to represent a generic JSON API payload where many
 // resources (Nodes) were included in an [] in the "data" key
 type ManyPayload struct {
@@ -31,6 +51,21 @@ type ManyPayload struct {
 
 func (p *ManyPayload) clearIncluded() {
 	p.Included = []*Node{}
+}
+
+//TODO see or this can be done cleaner
+func (p *ManyPayload) filterIncluded(relationshipPaths []string) {
+	if p == nil || len(p.Data) == 0 || len(p.Included) == 0 {
+		return
+	}
+	allIncludes := make(map[string]*Node, len(p.Included))
+	appendNodes(&allIncludes, p.Included...)
+	filteredIncludes := make(map[string]*Node, 0)
+	for _, path := range relationshipPaths {
+		relationPath := strings.Split(path, ".")
+		manyAppendRelationsToIncludes(&filteredIncludes, p.Data, relationPath, allIncludes)
+	}
+	p.Included = nodeMapValuesSorted(&filteredIncludes)
 }
 
 // Node is used to represent a generic JSON API Resource
@@ -118,4 +153,84 @@ type Metable interface {
 type RelationshipMetable interface {
 	// JSONRelationshipMeta will be invoked for each relationship with the corresponding relation name (e.g. `comments`)
 	JSONAPIRelationshipMeta(relation string) *Meta
+}
+
+func manyAppendRelationsToIncludes(includes *map[string]*Node, nodes []*Node, includePath []string, allIncludes map[string]*Node) {
+	for _, n := range nodes {
+		oneAppendRelationsToIncludes(includes, n, includePath, allIncludes)
+	}
+}
+
+func oneAppendRelationsToIncludes(includes *map[string]*Node, node *Node, includePath []string, allIncludes map[string]*Node) {
+	if len(includePath) < 1 {
+		return
+	}
+	relations := getRelationKeys(node, includePath[0])
+	level1Nodes := nodesMapValuesWithKeys(&allIncludes, &relations)
+	appendNodes(includes, level1Nodes...)
+	if len(includePath) > 1 {
+		manyAppendRelationsToIncludes(includes, level1Nodes, includePath[1:], allIncludes)
+	}
+}
+
+func getRelationKeys(n *Node, relationName string) map[string]bool {
+	result := make(map[string]bool, 0)
+	if n == nil {
+		return result
+	}
+	relationShips := n.Relationships[relationName]
+	if relationShips != nil {
+		if r, ok := relationShips.(*RelationshipOneNode); ok && r.Data != nil {
+			k := fmt.Sprintf("%s,%s", r.Data.Type, r.Data.ID)
+			return map[string]bool{k: true}
+		} else if r, ok := relationShips.(*RelationshipManyNode); ok {
+			for _, n := range r.Data {
+				k := fmt.Sprintf("%s,%s", n.Type, n.ID)
+				result[k] = true
+			}
+		}
+	}
+	return result
+}
+
+func appendNodes(m *map[string]*Node, nodes ...*Node) {
+	if m == nil {
+		return
+	}
+	included := *m
+	for _, n := range nodes {
+		if n == nil {
+			continue
+		}
+		k := fmt.Sprintf("%s,%s", n.Type, n.ID)
+		if _, hasNode := included[k]; hasNode {
+			continue
+		}
+		included[k] = n
+	}
+}
+
+func nodesMapValuesWithKeys(m *map[string]*Node, keys *map[string]bool) []*Node {
+	result := make([]*Node, 0)
+	for k := range *keys {
+		result = append(result, (*m)[k])
+	}
+	return result
+}
+
+func nodeMapValuesSorted(m *map[string]*Node) []*Node {
+	nodes := nodeMapValues(m)
+	if len(nodes) == 0 {
+		return []*Node{}
+	}
+
+	// sort by type and id
+	sort.Slice(nodes, func(i, j int) bool {
+		if nodes[i].Type == nodes[j].Type {
+			return nodes[i].ID < nodes[j].ID
+		}
+		return nodes[i].Type < nodes[j].Type
+	})
+
+	return nodes
 }

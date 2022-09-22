@@ -119,13 +119,83 @@ func Marshal(models interface{}) (Payloader, error) {
 // models interface{} should be either a struct pointer or a slice of struct
 // pointers.
 func MarshalPayloadWithoutIncluded(w io.Writer, model interface{}) error {
-	payload, err := Marshal(model)
+	payload, err := MarshalWithoutIncluded(model)
 	if err != nil {
 		return err
 	}
-	payload.clearIncluded()
 
 	return json.NewEncoder(w).Encode(payload)
+}
+
+// MarshalWithoutIncluded does the same as MarshalPayloadWithoutIncluded except it just returns the payload
+// and doesn't write out results. Useful if you use your own JSON rendering
+// library.
+func MarshalWithoutIncluded(model interface{}) (Payloader, error) {
+	payload, err := Marshal(model)
+	if err != nil {
+		return nil, err
+	}
+	payload.clearIncluded()
+	return payload, nil
+}
+
+// MarshalPayloadFilterIncluded writes a jsonapi response with one or many
+// records, filtering the related records sideloaded into "included" array.
+// If you want to serialize the relations into the "included" array see
+// MarshalPayload.
+//
+// models interface{} should be either a struct pointer or a slice of struct
+// pointers.
+//
+// relationPaths is a list of relation paths to include in the "included" array.
+// A relation path is a dot separated list of relation names. For example, if
+// you have a struct like this:
+//
+// type User struct {
+//     ID int
+//     Name string
+//     Posts []*Post
+// }
+//
+// type Post struct {
+//     ID int
+//     Title string
+//     Comments []*Comment
+// }
+//
+// type Comment struct {
+//     ID int
+//     Body string
+// }
+//
+// You can include the posts of a user by passing the relationPaths
+// argument like this:
+// relationPaths := []string{"posts"} and you can include the posts and the comments of a user
+//
+// You can include the posts and comments of a user by passing the relationPaths
+// argument like this:
+//
+// relationPaths := []string{"posts.comments"}
+// It's impossible to include the comments of a post without including the post
+func MarshalPayloadFilterIncluded(w io.Writer, model interface{}, relationPaths []string) error {
+	payload, err := MarshalFilterIncluded(model, relationPaths)
+	if err != nil {
+		return err
+	}
+
+	return json.NewEncoder(w).Encode(payload)
+}
+
+// MarshalFilterIncluded does the same as MarshalPayloadFilterIncluded except it just returns the payload
+// and doesn't write out results. Useful if you use your own JSON rendering
+// library.
+func MarshalFilterIncluded(model interface{}, relationPaths []string) (Payloader, error) {
+	payload, err := Marshal(model)
+	if err != nil {
+		return nil, err
+	}
+	payload.filterIncluded(relationPaths)
+	return payload, nil
 }
 
 // marshalOne does the same as MarshalOnePayload except it just returns the
