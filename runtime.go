@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
-	"reflect"
 	"time"
 )
 
@@ -76,9 +75,9 @@ func (r *Runtime) UnmarshalPayload(reader io.Reader, model interface{}) error {
 }
 
 // UnmarshalManyPayload has docs in request.go for UnmarshalManyPayload.
-func (r *Runtime) UnmarshalManyPayload(reader io.Reader, kind reflect.Type) (elems []interface{}, err error) {
+func (r *Runtime) UnmarshalManyPayload(reader io.Reader) (elems []interface{}, err error) {
 	r.instrumentCall(UnmarshalStart, UnmarshalStop, func() error {
-		elems, err = UnmarshalManyPayload(reader, kind)
+		elems, err = UnmarshalManyPayload[any](reader)
 		return err
 	})
 

@@ -117,18 +117,18 @@ func DecodeOnePayload(payload *OnePayload, model interface{}) error {
 
 // UnmarshalManyPayload converts an io into a set of struct instances using
 // jsonapi tags on the type's struct fields.
-func UnmarshalManyPayload(in io.Reader, t reflect.Type) ([]interface{}, error) {
+func UnmarshalManyPayload[T any](in io.Reader) ([]T, error) {
 	payload := new(ManyPayload)
 
 	if err := json.NewDecoder(in).Decode(payload); err != nil {
 		return nil, err
 	}
 
-	return DecodeManyPayload(payload, t)
+	return DecodeManyPayload[T](payload)
 }
 
-func DecodeManyPayload(payload *ManyPayload, t reflect.Type) ([]interface{}, error) {
-	models := []interface{}{}         // will be populated from the "data"
+func DecodeManyPayload[T any](payload *ManyPayload) ([]T, error) {
+	var models []T                    // will be populated from the "data"
 	includedMap := map[string]*Node{} // will be populate from the "included"
 
 	if payload.Included != nil {
@@ -139,15 +139,31 @@ func DecodeManyPayload(payload *ManyPayload, t reflect.Type) ([]interface{}, err
 	}
 
 	for _, data := range payload.Data {
-		model := reflect.New(t.Elem())
-		err := unmarshalNode(data, model, &includedMap)
+		var model T
+		err := unmarshalNodeGeneric(data, &model, includedMap)
 		if err != nil {
 			return nil, err
 		}
-		models = append(models, model.Interface())
+		models = append(models, model)
 	}
 
 	return models, nil
+}
+
+func unmarshalNodeGeneric[T any](data *Node, model *T, includedMap map[string]*Node) error {
+	//check if T is Pointer
+	var t T
+	typeOf := reflect.TypeOf(t)
+	if typeOf.Kind() != reflect.Ptr {
+		return errors.New("T must be a pointer")
+	}
+	modelValue := reflect.New(typeOf.Elem())
+	err := unmarshalNode(data, modelValue, &includedMap)
+	if err != nil {
+		return err
+	}
+	*model = modelValue.Interface().(T)
+	return nil
 }
 
 func unmarshalNode(data *Node, model reflect.Value, included *map[string]*Node) (err error) {

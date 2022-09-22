@@ -784,20 +784,13 @@ func TestUnmarshalManyPayload(t *testing.T) {
 	}
 	in := bytes.NewReader(data)
 
-	posts, err := UnmarshalManyPayload(in, reflect.TypeOf(new(Post)))
+	posts, err := UnmarshalManyPayload[*Post](in)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if len(posts) != 2 {
 		t.Fatal("Wrong number of posts")
-	}
-
-	for _, p := range posts {
-		_, ok := p.(*Post)
-		if !ok {
-			t.Fatal("Was expecting a Post")
-		}
 	}
 }
 
