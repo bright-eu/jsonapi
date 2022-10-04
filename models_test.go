@@ -1,7 +1,9 @@
 package jsonapi
 
 import (
+	"encoding/json"
 	"fmt"
+	"testing"
 	"time"
 )
 
@@ -178,7 +180,7 @@ type Employee struct {
 	Firstname string     `jsonapi:"attr,firstname"`
 	Surname   string     `jsonapi:"attr,surname"`
 	Age       int        `jsonapi:"attr,age"`
-	HiredAt   *time.Time `jsonapi:"attr,hired-at,iso8601"`
+	HiredAt   *time.Time `jsonapi:"attr,hired-at,iso8601" json:"hired-at"`
 }
 
 type CustomIntType int
@@ -194,4 +196,23 @@ type CustomAttributeTypes struct {
 
 	Float  CustomFloatType  `jsonapi:"attr,float"`
 	String CustomStringType `jsonapi:"attr,string"`
+}
+
+func TestBla(t *testing.T) {
+	hiredAt := time.Date(2016, 1, 1, 0, 0, 0, 0, time.UTC)
+	e := Employee{
+		Firstname: "John",
+		Surname:   "Doe",
+		Age:       42,
+		HiredAt:   &hiredAt,
+	}
+	marshal, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actual Employee
+	err = json.Unmarshal(marshal, &actual)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

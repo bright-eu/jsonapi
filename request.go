@@ -12,26 +12,22 @@ import (
 	"time"
 )
 
-const (
-	unsupportedStructTagMsg = "Unsupported jsonapi tag annotation, %s"
-)
-
 var (
 	// ErrInvalidTime is returned when a struct has a time.Time type field, but
 	// the JSON value was not a unix timestamp integer.
-	ErrInvalidTime = errors.New("Only numbers can be parsed as dates, unix timestamps")
+	ErrInvalidTime = errors.New("only numbers can be parsed as dates, unix timestamps")
 	// ErrInvalidISO8601 is returned when a struct has a time.Time type field and includes
 	// "iso8601" in the tag spec, but the JSON value was not an ISO8601 timestamp string.
-	ErrInvalidISO8601 = errors.New("Only strings can be parsed as dates, ISO8601 timestamps")
+	ErrInvalidISO8601 = errors.New("only strings can be parsed as dates, ISO8601 timestamps")
 	// ErrInvalidRFC3339 is returned when a struct has a time.Time type field and includes
 	// "rfc3339" in the tag spec, but the JSON value was not an RFC3339 timestamp string.
-	ErrInvalidRFC3339 = errors.New("Only strings can be parsed as dates, RFC3339 timestamps")
+	ErrInvalidRFC3339 = errors.New("only strings can be parsed as dates, RFC3339 timestamps")
 	// ErrUnknownFieldNumberType is returned when the JSON value was a float
 	// (numeric) but the Struct field was a non numeric type (i.e. not int, uint,
 	// float, etc)
-	ErrUnknownFieldNumberType = errors.New("The struct field was not of a known number type")
+	ErrUnknownFieldNumberType = errors.New("the struct field was not of a known number type")
 	// ErrInvalidType is returned when the given type is incompatible with the expected type.
-	ErrInvalidType = errors.New("Invalid type provided") // I wish we used punctuation.
+	ErrInvalidType = errors.New("invalid type provided") // I wish we used punctuation.
 
 )
 
@@ -57,6 +53,20 @@ func (eupt ErrUnsupportedPtrType) Error() string {
 
 func newErrUnsupportedPtrType(rf reflect.Value, t reflect.Type, structField reflect.StructField) error {
 	return ErrUnsupportedPtrType{rf, t, structField}
+}
+
+// ErrInvalidJSONAPIType is returned when the JSONAPI type does not match the jsonapi primary type tag.
+type ErrInvalidJSONAPIType struct {
+	ActualType   string
+	ExpectedType string
+}
+
+func (e ErrInvalidJSONAPIType) Error() string {
+	return fmt.Sprintf("Trying to Unmarshal an object of type %#v, but %#v does not match", e.ExpectedType, e.ActualType)
+}
+
+func newErrInvalidJSONAPIType(actualType, expectedType string) error {
+	return ErrInvalidJSONAPIType{actualType, expectedType}
 }
 
 // UnmarshalPayload converts an io into a struct instance using jsonapi tags on
@@ -128,14 +138,18 @@ func UnmarshalManyPayload[T any](in io.Reader) ([]T, error) {
 }
 
 func DecodeManyPayload[T any](payload *ManyPayload) ([]T, error) {
-	var models []T                    // will be populated from the "data"
-	includedMap := map[string]*Node{} // will be populate from the "included"
+	models := make([]T, 0, len(payload.Data)) // will be populated from the "data"
+	includedMap := map[string]*Node{}         // will be populated from the "included"
 
 	if payload.Included != nil {
 		for _, included := range payload.Included {
 			key := fmt.Sprintf("%s,%s", included.Type, included.ID)
 			includedMap[key] = included
 		}
+	}
+
+	if payload.Data == nil {
+		return nil, nil
 	}
 
 	for _, data := range payload.Data {
@@ -204,11 +218,7 @@ func unmarshalNode(data *Node, model reflect.Value, included *map[string]*Node) 
 		if annotation == annotationPrimary {
 			// Check the JSON API Type
 			if data.Type != args[1] {
-				er = fmt.Errorf(
-					"Trying to Unmarshal an object of type %#v, but %#v does not match",
-					data.Type,
-					args[1],
-				)
+				er = newErrInvalidJSONAPIType(args[1], data.Type)
 				break
 			}
 
@@ -352,7 +362,7 @@ func unmarshalNode(data *Node, model reflect.Value, included *map[string]*Node) 
 			}
 
 		} else {
-			er = fmt.Errorf(unsupportedStructTagMsg, annotation)
+			er = fmt.Errorf("unsupported jsonapi tag annotation, %s", annotation)
 		}
 	}
 
@@ -414,6 +424,8 @@ func unmarshalAttribute(
 	value = reflect.ValueOf(attribute)
 	fieldType := structField.Type
 
+	// TODO can't this just ba generic marshal unmarshal? Would probably be less performant though
+
 	// Handle field of type []string
 	if fieldValue.Type() == reflect.TypeOf([]string{}) {
 		value, err = handleStringSlice(attribute)
@@ -454,6 +466,13 @@ func unmarshalAttribute(
 
 	// As a final catch-all, ensure types line up to avoid a runtime panic.
 	if fieldValue.Kind() != value.Kind() {
+		// TODO - looking for a solution for unrecognized types
+		//if value.Kind() == reflect.String {
+		//	v := reflect.New(fieldType)
+		//	i := v.Interface()
+		//	err = json.Unmarshal([]byte(value.String()), i)
+		//	return
+		//}
 		err = ErrInvalidType
 		return
 	}
@@ -640,11 +659,6 @@ func handleStruct(
 		return reflect.Value{}, err
 	}
 
-	node := new(Node)
-	if err := json.Unmarshal(data, &node.Attributes); err != nil {
-		return reflect.Value{}, err
-	}
-
 	var model reflect.Value
 	if fieldValue.Kind() == reflect.Ptr {
 		model = reflect.New(fieldValue.Type().Elem())
@@ -652,7 +666,9 @@ func handleStruct(
 		model = reflect.New(fieldValue.Type())
 	}
 
-	if err := unmarshalNode(node, model, nil); err != nil {
+	v := model.Interface()
+	err = json.Unmarshal(data, &v)
+	if err != nil {
 		return reflect.Value{}, err
 	}
 
@@ -662,8 +678,8 @@ func handleStruct(
 func handleStructSlice(
 	attribute interface{},
 	fieldValue reflect.Value) (reflect.Value, error) {
-	models := reflect.New(fieldValue.Type()).Elem()
 	dataMap := reflect.ValueOf(attribute).Interface().([]interface{})
+	models := reflect.MakeSlice(fieldValue.Type(), 0, len(dataMap))
 	for _, data := range dataMap {
 		model := reflect.New(fieldValue.Type().Elem()).Elem()
 
