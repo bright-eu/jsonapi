@@ -61,12 +61,12 @@ type ErrInvalidJSONAPIType struct {
 	ExpectedType string
 }
 
-func (e ErrInvalidJSONAPIType) Error() string {
+func (e *ErrInvalidJSONAPIType) Error() string {
 	return fmt.Sprintf("Trying to Unmarshal an object of type %#v, but %#v does not match", e.ExpectedType, e.ActualType)
 }
 
 func newErrInvalidJSONAPIType(actualType, expectedType string) error {
-	return ErrInvalidJSONAPIType{actualType, expectedType}
+	return &ErrInvalidJSONAPIType{actualType, expectedType}
 }
 
 // UnmarshalPayload converts an io into a struct instance using jsonapi tags on
