@@ -28,6 +28,52 @@ var (
 	ErrUnexpectedType = errors.New("models should be a struct pointer or slice of struct pointers")
 )
 
+type MarshalOptions struct {
+	// IncludeRelationPaths is a list of relation paths to include in the "included" array.
+	// If nil, all relations will be included.
+	// If empty, no relations will be included.
+	// A relation path is a dot separated list of relation names.
+	//
+	// For example, if you have a struct like this:
+	//
+	//	type User struct {
+	//	    ID int        `jsonapi:"primary,user"`
+	//	    Name string   `jsonapi:"attr,name"`
+	//	    Posts []*Post `jsonapi:"relation,posts"`
+	//	}
+	//
+	//	type Post struct {
+	//	    ID int              `jsonapi:"primary,post"`
+	//	    Title string        `jsonapi:"attr,title"`
+	//	    Comments []*Comment `jsonapi:"relation,comments"`
+	//	}
+	//
+	//	type Comment struct {
+	//	    ID int
+	//	    Body string
+	//	}
+	//
+	// You can include the posts of a user by passing the relationPaths
+	// argument like this:
+	// relationPaths := []string{"posts"}
+	//
+	// You can include the posts and comments of a user by passing the relationPaths
+	// argument like this:
+	// options.IncludeRelationPaths := []string{"posts.comments"}
+	//
+	// It's impossible to include the comments of a post without including the post
+	// itself.
+	// So []string{"comments"} is not a valid value for relationPaths
+	// and []string{"posts","posts.comments"} is redundant.
+	IncludeRelationPaths []string
+	// Links specifies the links object that will be included in the payload.
+	// (This will override any links specified in the Linkable interface.)
+	Links *Links
+	// Meta specifies the meta object that will be included in the payload.
+	// (This will override any meta specified in the Metable interface.)
+	Meta *Meta
+}
+
 // MarshalPayload writes a jsonapi response for one or many records. The
 // related records are sideloaded into the "included" array. If this method is
 // given a struct pointer as an argument it will serialize in the form
@@ -37,31 +83,30 @@ var (
 // One Example: you could pass it, w, your http.ResponseWriter, and, models, a
 // ptr to a Blog to be written to the response body:
 //
-//	 func ShowBlog(w http.ResponseWriter, r *http.Request) {
-//		 blog := &Blog{}
+//	func ShowBlog(w http.ResponseWriter, r *http.Request) {
+//		blog := &Blog{}
 //
-//		 w.Header().Set("Content-Type", jsonapi.MediaType)
-//		 w.WriteHeader(http.StatusOK)
+//		w.Header().Set("Content-Type", jsonapi.MediaType)
+//		w.WriteHeader(http.StatusOK)
 //
-//		 if err := jsonapi.MarshalPayload(w, blog); err != nil {
-//			 http.Error(w, err.Error(), http.StatusInternalServerError)
-//		 }
-//	 }
+//		if err := jsonapi.MarshalPayload(w, blog); err != nil {
+//			http.Error(w, err.Error(), http.StatusInternalServerError)
+//		}
+//	}
 //
 // Many Example: you could pass it, w, your http.ResponseWriter, and, models, a
 // slice of Blog struct instance pointers to be written to the response body:
 //
-//	 func ListBlogs(w http.ResponseWriter, r *http.Request) {
-//     blogs := []*Blog{}
+//	func ListBlogs(w http.ResponseWriter, r *http.Request) {
+//		blogs := []*Blog{}
 //
-//		 w.Header().Set("Content-Type", jsonapi.MediaType)
-//		 w.WriteHeader(http.StatusOK)
+//		w.Header().Set("Content-Type", jsonapi.MediaType)
+//		w.WriteHeader(http.StatusOK)
 //
-//		 if err := jsonapi.MarshalPayload(w, blogs); err != nil {
-//			 http.Error(w, err.Error(), http.StatusInternalServerError)
-//		 }
-//	 }
-//
+//		if err := jsonapi.MarshalPayload(w, blogs); err != nil {
+//			http.Error(w, err.Error(), http.StatusInternalServerError)
+//		}
+//	}
 func MarshalPayload(w io.Writer, models interface{}) error {
 	payload, err := Marshal(models)
 	if err != nil {
@@ -119,7 +164,31 @@ func Marshal(models interface{}) (Payloader, error) {
 // models interface{} should be either a struct pointer or a slice of struct
 // pointers.
 func MarshalPayloadWithoutIncluded(w io.Writer, model interface{}) error {
-	payload, err := MarshalWithoutIncluded(model)
+	return MarshalPayloadWithOptions(w, model, MarshalOptions{
+		IncludeRelationPaths: []string{},
+	})
+}
+
+// MarshalWithoutIncluded does the same as MarshalPayloadWithoutIncluded except it just returns the payload
+// and doesn't write out results. Useful if you use your own JSON rendering
+// library.
+func MarshalWithoutIncluded(model interface{}) (Payloader, error) {
+	return MarshalWithOptions(model, MarshalOptions{
+		IncludeRelationPaths: []string{},
+	})
+}
+
+// MarshalPayloadWithOptions writes a jsonapi response with one or many
+// records, with the related records sideloaded into "included" array.
+// It also allows you to add a links object and a meta object to the payload.
+// (This overrides the links and meta objects if the model implemented the
+// Linkable or Metable interfaces.)
+// For more details see MarshalPayload and MarshalOptions.
+//
+// models interface{} should be either a struct pointer or a slice of struct
+// pointers.
+func MarshalPayloadWithOptions(w io.Writer, model interface{}, options MarshalOptions) error {
+	payload, err := MarshalWithOptions(model, options)
 	if err != nil {
 		return err
 	}
@@ -127,15 +196,27 @@ func MarshalPayloadWithoutIncluded(w io.Writer, model interface{}) error {
 	return json.NewEncoder(w).Encode(payload)
 }
 
-// MarshalWithoutIncluded does the same as MarshalPayloadWithoutIncluded except it just returns the payload
+// MarshalWithOptions does the same as MarshalPayloadWithOptions except it just returns the payload
 // and doesn't write out results. Useful if you use your own JSON rendering
 // library.
-func MarshalWithoutIncluded(model interface{}) (Payloader, error) {
+func MarshalWithOptions(model interface{}, options MarshalOptions) (Payloader, error) {
 	payload, err := Marshal(model)
 	if err != nil {
 		return nil, err
 	}
-	payload.clearIncluded()
+	if options.IncludeRelationPaths != nil {
+		if len(options.IncludeRelationPaths) == 0 {
+			payload.clearIncluded()
+		} else {
+			payload.filterIncluded(options.IncludeRelationPaths)
+		}
+	}
+	if options.Links != nil {
+		payload.setLinks(options.Links)
+	}
+	if options.Meta != nil {
+		payload.setMeta(options.Meta)
+	}
 	return payload, nil
 }
 
@@ -151,22 +232,22 @@ func MarshalWithoutIncluded(model interface{}) (Payloader, error) {
 // A relation path is a dot separated list of relation names. For example, if
 // you have a struct like this:
 //
-// type User struct {
-//     ID int
-//     Name string
-//     Posts []*Post
-// }
+//	type User struct {
+//	    ID int
+//	    Name string
+//	    Posts []*Post
+//	}
 //
-// type Post struct {
-//     ID int
-//     Title string
-//     Comments []*Comment
-// }
+//	type Post struct {
+//	    ID int
+//	    Title string
+//	    Comments []*Comment
+//	}
 //
-// type Comment struct {
-//     ID int
-//     Body string
-// }
+//	type Comment struct {
+//	    ID int
+//	    Body string
+//	}
 //
 // You can include the posts of a user by passing the relationPaths
 // argument like this:
@@ -178,24 +259,18 @@ func MarshalWithoutIncluded(model interface{}) (Payloader, error) {
 // relationPaths := []string{"posts.comments"}
 // It's impossible to include the comments of a post without including the post
 func MarshalPayloadFilterIncluded(w io.Writer, model interface{}, relationPaths []string) error {
-	payload, err := MarshalFilterIncluded(model, relationPaths)
-	if err != nil {
-		return err
-	}
-
-	return json.NewEncoder(w).Encode(payload)
+	return MarshalPayloadWithOptions(w, model, MarshalOptions{
+		IncludeRelationPaths: relationPaths,
+	})
 }
 
 // MarshalFilterIncluded does the same as MarshalPayloadFilterIncluded except it just returns the payload
 // and doesn't write out results. Useful if you use your own JSON rendering
 // library.
 func MarshalFilterIncluded(model interface{}, relationPaths []string) (Payloader, error) {
-	payload, err := Marshal(model)
-	if err != nil {
-		return nil, err
-	}
-	payload.filterIncluded(relationPaths)
-	return payload, nil
+	return MarshalWithOptions(model, MarshalOptions{
+		IncludeRelationPaths: relationPaths,
+	})
 }
 
 // marshalOne does the same as MarshalOnePayload except it just returns the
