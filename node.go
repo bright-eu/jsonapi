@@ -10,6 +10,8 @@ import (
 type Payloader interface {
 	clearIncluded()
 	filterIncluded(relationshipPaths []string)
+	setMeta(meta *Meta)
+	setLinks(links *Links)
 }
 
 // OnePayload is used to represent a generic JSON API payload where a single
@@ -25,7 +27,7 @@ func (p *OnePayload) clearIncluded() {
 	p.Included = []*Node{}
 }
 
-//TODO see or this can be done cleaner
+// TODO see or this can be done cleaner
 func (p *OnePayload) filterIncluded(relationshipPaths []string) {
 	if p == nil || p.Data == nil || len(p.Included) == 0 {
 		return
@@ -38,6 +40,16 @@ func (p *OnePayload) filterIncluded(relationshipPaths []string) {
 		oneAppendRelationsToIncludes(&filteredIncludes, p.Data, includePath, allIncludes)
 	}
 	p.Included = nodeMapValuesSorted(&filteredIncludes)
+}
+
+// SetLinks sets the links field of the payload
+func (p *OnePayload) setLinks(links *Links) {
+	p.Links = links
+}
+
+// SetMeta sets the meta field of the payload
+func (p *OnePayload) setMeta(meta *Meta) {
+	p.Meta = meta
 }
 
 // ManyPayload is used to represent a generic JSON API payload where many
@@ -53,7 +65,7 @@ func (p *ManyPayload) clearIncluded() {
 	p.Included = []*Node{}
 }
 
-//TODO see or this can be done cleaner
+// TODO see or this can be done cleaner
 func (p *ManyPayload) filterIncluded(relationshipPaths []string) {
 	if p == nil || len(p.Data) == 0 || len(p.Included) == 0 {
 		return
@@ -66,6 +78,16 @@ func (p *ManyPayload) filterIncluded(relationshipPaths []string) {
 		manyAppendRelationsToIncludes(&filteredIncludes, p.Data, relationPath, allIncludes)
 	}
 	p.Included = nodeMapValuesSorted(&filteredIncludes)
+}
+
+// SetLinks sets the links field of the payload
+func (p *ManyPayload) setLinks(links *Links) {
+	p.Links = links
+}
+
+// SetMeta sets the meta field of the payload
+func (p *ManyPayload) setMeta(meta *Meta) {
+	p.Meta = meta
 }
 
 // Node is used to represent a generic JSON API Resource

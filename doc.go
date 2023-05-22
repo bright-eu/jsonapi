@@ -1,5 +1,5 @@
 /*
-Package jsonapi provides a serializer and deserializer for jsonapi.org spec payloads.
+Package jsonapi provides a serializer and deserializer for jsonapi.org_rest spec payloads.
 
 You can keep your model structs as is and use struct field tags to indicate to jsonapi
 how you want your response built or your request deserialized. What about my relationships?
@@ -7,7 +7,7 @@ jsonapi supports relationships out of the box and will even side load them in yo
 into an "included" array--that contains associated objects.
 
 jsonapi uses StructField tags to annotate the structs fields that you already have and use
-in your app and then reads and writes jsonapi.org output based on the instructions you give
+in your app and then reads and writes jsonapi.org_rest output based on the instructions you give
 the library in your jsonapi tags.
 
 Example structs using a Blog > Post > Comment structure,
@@ -63,7 +63,7 @@ jsonapi will traverse the graph of relationships and marshal or unmarshal record
 argument must be, "relation", and the second should be the name of the relationship, used as
 the key in the "relationships" hash for the record.
 
-Use the methods below to Marshal and Unmarshal jsonapi.org json payloads.
+Use the methods below to Marshal and Unmarshal jsonapi.org_rest json payloads.
 
 Visit the readme at https://github.com/google/jsonapi
 */
